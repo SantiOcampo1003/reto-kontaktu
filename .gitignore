@@ -1,0 +1,12 @@
+# Secretos y entorno
+.env
+.venv/
+__pycache__/
+*.pyc
+
+# Basura de macOS
+.DS_Store
+
+# Generado en tiempo de ejecucion: no es codigo, no se versiona
+/salida/
+/estado/
