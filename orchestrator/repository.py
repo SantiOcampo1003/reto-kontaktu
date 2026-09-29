@@ -71,7 +71,7 @@ def is_whatsapp_blocked(connection, contact_id):
     return bool(row and row["whatsapp_blocked"])
 
 
-def mark_do_not_contact(connection, contact_id, reason):
+def flag_do_not_contact(connection, contact_id, reason):
     connection.execute(
         """
         INSERT INTO leads (contact_id, dnc, dnc_reason)

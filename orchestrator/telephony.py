@@ -4,15 +4,15 @@ TRUNK_FAILURE_RANGE = range(500, 600)
 SIP_CODE_RULES = {
     408: ("sin_respuesta", "no contestaron", 0.95),
     480: ("sin_respuesta", "no contestaron", 0.95),
-    486: ("ocupado", "la linea comunica", 0.95),
+    486: ("ocupado", "la línea comunica", 0.95),
     603: ("rechazada", "rechazo activo antes de descolgar", 0.95),
 }
 
 # amd.result -> (label, plantilla del motivo, confianza)
 AMD_RESULT_RULES = {
-    "machine-vm": ("buzon", "AMD detecto contestador (machine-vm, fuente {source})", 0.85),
-    "machine-unavailable": ("buzon", "AMD detecto contestador (machine-unavailable, fuente {source})", 0.85),
-    "machine-ivr": ("otro", "AMD detecto un IVR, fuera de catalogo (fuente {source})", 0.6),
+    "machine-vm": ("buzon", "AMD detectó contestador (machine-vm, fuente {source})", 0.85),
+    "machine-unavailable": ("buzon", "AMD detectó contestador (machine-unavailable, fuente {source})", 0.85),
+    "machine-ivr": ("otro", "AMD detectó un IVR, fuera de catálogo (fuente {source})", 0.6),
 }
 
 
