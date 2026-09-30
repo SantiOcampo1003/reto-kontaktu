@@ -79,6 +79,7 @@ def build_graph(connection, config, model):
         contact_id = event["lead"]["contact_id"]
         entry_id = event["campaign"]["entry_id"]
 
+        already_dnc = repository.is_on_dnc(connection, contact_id)
         attempts_so_far = repository.count_attempts(connection, contact_id)
         max_attempts = config["reintentos"]["max_intentos"]
 
@@ -86,6 +87,8 @@ def build_graph(connection, config, model):
             decision = business_rules.classify_call(event, attempts_so_far, max_attempts)
         except business_rules.NeedsTranscript:
             signals = llm_extraction.extract_signals(event, config, model)
+            if repository.is_whatsapp_blocked(connection, contact_id):
+                signals.rechaza_whatsapp = True  # N1: un rechazo pasado se queda para siempre
             dropped_calls_so_far = repository.count_dropped_calls(connection, contact_id)
             decision = business_rules.classify_from_signals(signals, dropped_calls_so_far)
 
@@ -97,9 +100,10 @@ def build_graph(connection, config, model):
             decision["label"], decision["reason"], decision["confidence"],
             event["telephony"]["duration_seconds"],
         )]
-        built_orders += order_builder.build_action_orders(
-            decision["action"], event, decision, occurred_at, config, connection,
-        )
+        if not already_dnc:  # N2: una baja de una llamada anterior no recibe ninguna orden mas
+            built_orders += order_builder.build_action_orders(
+                decision["action"], event, decision, occurred_at, config, connection,
+            )
 
         return {
             "label": decision["label"],
