@@ -6,14 +6,19 @@ y que añadio al estado. Uso:
     python3 scripts/trace_event.py eventos/02-call-ended-tomas.json
 """
 import json
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from dotenv import load_dotenv
+
 from orchestrator import repository
 from orchestrator.config import load_campaign_config
 from orchestrator.graph import build_graph
+
+load_dotenv()
 
 NODE_EXPLANATIONS = {
     "check_organization": "verifica que el evento sea de nuestra organizacion (R6)",
@@ -31,8 +36,9 @@ def main(event_path):
         event = json.load(f)
     config = load_campaign_config()
 
+    model = os.environ["MODELO"]
     with repository.open_connection() as connection:
-        graph = build_graph(connection, config)
+        graph = build_graph(connection, config, model)
         print(f"--- procesando {event_path} ---")
         for step in graph.stream({"event": event}):
             for node_name, changes in step.items():

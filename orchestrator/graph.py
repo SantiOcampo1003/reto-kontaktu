@@ -1,9 +1,8 @@
-from datetime import timedelta
 from typing import List, Optional, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from orchestrator import business_rules, dates, orders, output, repository
+from orchestrator import business_rules, dates, llm_extraction, order_builder, orders, output, repository
 
 
 class GraphState(TypedDict, total=False):
@@ -18,7 +17,7 @@ class GraphState(TypedDict, total=False):
     should_record_call_history: bool
 
 
-def build_graph(connection, config):
+def build_graph(connection, config, model):
     organization_id = config["campana"]["organization_id"]
 
     def check_organization(state):
@@ -79,12 +78,16 @@ def build_graph(connection, config):
         event = state["event"]
         contact_id = event["lead"]["contact_id"]
         entry_id = event["campaign"]["entry_id"]
-        phone = event["lead"]["phone"]
-        call_id = event["telephony"]["call_id"]
 
         attempts_so_far = repository.count_attempts(connection, contact_id)
         max_attempts = config["reintentos"]["max_intentos"]
-        decision = business_rules.classify_call(event, attempts_so_far, max_attempts)
+
+        try:
+            decision = business_rules.classify_call(event, attempts_so_far, max_attempts)
+        except business_rules.NeedsTranscript:
+            signals = llm_extraction.extract_signals(event, config, model)
+            dropped_calls_so_far = repository.count_dropped_calls(connection, contact_id)
+            decision = business_rules.classify_from_signals(signals, dropped_calls_so_far)
 
         occurred_at = dates.to_madrid(dates.parse_iso(event["occurred_at"]), config)
         status = business_rules.STATUS_BY_LABEL[decision["label"]]
@@ -94,54 +97,9 @@ def build_graph(connection, config):
             decision["label"], decision["reason"], decision["confidence"],
             event["telephony"]["duration_seconds"],
         )]
-
-        action = decision["action"]
-
-        if action == "confirm_visit":
-            appointment = event["agent_outcome"]["appointment"]
-            start = dates.to_madrid(dates.parse_iso(appointment["start_time"]), config)
-            margin = config["tareas"]["confirmar_visita_margen_horas"]
-            built_orders.append(orders.create_task(
-                event["event_id"], event["idempotency_key"], contact_id,
-                "confirmar_visita_direccion", "Confirmar direccion de la visita",
-                start - timedelta(hours=margin), call_id=call_id,
-            ))
-
-        elif action == "retry_general":
-            not_before = dates.schedule_after(
-                occurred_at, config["reintentos"]["separacion_minima_horas"] * 60, config,
-            )
-            built_orders.append(orders.schedule_call(
-                event["event_id"], event["idempotency_key"], entry_id, phone,
-                not_before, decision["reason"],
-            ))
-
-        elif action == "retry_busy":
-            not_before = dates.schedule_after_range(
-                occurred_at,
-                config["reintentos"]["ocupado_minutos_min"],
-                config["reintentos"]["ocupado_minutos_max"],
-                config,
-            )
-            built_orders.append(orders.schedule_call(
-                event["event_id"], event["idempotency_key"], entry_id, phone,
-                not_before, decision["reason"],
-            ))
-
-        elif action == "backup_channel":
-            if not repository.is_whatsapp_blocked(connection, contact_id):
-                built_orders.append(orders.send_whatsapp_template(
-                    event["event_id"], event["idempotency_key"],
-                    event["organization_id"], phone, "primer_toque_respaldo",
-                ))
-
-        elif action == "review_task":
-            due_at = occurred_at + timedelta(days=config["tareas"]["vencimiento_por_defecto_dias"])
-            built_orders.append(orders.create_task(
-                event["event_id"], event["idempotency_key"], contact_id,
-                "revisar_llamada", "Revisar llamada fuera de catalogo",
-                due_at, call_id=call_id, detail=decision["reason"],
-            ))
+        built_orders += order_builder.build_action_orders(
+            decision["action"], event, decision, occurred_at, config, connection,
+        )
 
         return {
             "label": decision["label"],

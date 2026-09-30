@@ -1,12 +1,16 @@
 import json
+import os
 import sys
 from pathlib import Path
 
 import jsonschema
+from dotenv import load_dotenv
 
 from orchestrator import repository
 from orchestrator.config import load_campaign_config
 from orchestrator.graph import build_graph
+
+load_dotenv()
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 SCHEMA_PATH = PROJECT_ROOT / "esquemas" / "evento.schema.json"
@@ -29,8 +33,9 @@ def main(argv):
     try:
         event = load_event(event_path)
         config = load_campaign_config()
+        model = os.environ["MODELO"]
         with repository.open_connection() as connection:
-            graph = build_graph(connection, config)
+            graph = build_graph(connection, config, model)
             graph.invoke({"event": event})
         return 0
     except Exception as exc:
